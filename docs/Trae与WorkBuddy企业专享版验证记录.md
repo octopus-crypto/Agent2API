@@ -6,7 +6,7 @@
 
 | 项目 | 状态 | 依据或阻碍 |
 | --- | --- | --- |
-| Trae 模型目录、对话、流式输出和工具调用 | BLOCKED | 源码包含相关处理，但尚未完成应用启动、账号授权和真实调用，不能据此确认实际可用模型。 |
+| Trae 模型目录、对话、流式输出和工具调用 | PASS | 账号登录并刷新目录后，使用 `Doubao-Seed-2.1-Turbo-solo` 完成真实调用；其他目录模型未逐一推理验证。 |
 | WorkBuddy 企业专享版连接 | BLOCKED | 企业登录页面的不带凭据请求返回 HTTP 200；尚未确认或验证模型 API 地址。 |
 | WorkBuddy 企业专享版认证 | BLOCKED | 尚未确认企业允许的第三方认证流程和调用授权。 |
 | WorkBuddy 企业专享版模型目录及推理 | BLOCKED | 尚未取得正式接口协议、账号授权和真实调用结果。 |
@@ -17,9 +17,35 @@
 
 登录页面返回 HTTP 200 只证明该页面可访问，不证明企业身份、接口权限或模型调用可用。
 
+腾讯公开的 [WorkBuddy Managed Agents API 文档](https://cloud.tencent.com/document/api/1831/138581) 描述了企业托管智能体的 REST API，要求签名和 CAM 鉴权；[WorkBuddy 开放平台文档](https://open.workbuddy.cn/docs/openapi) 描述了第三方应用的 OAuth 2.1、云端任务与本地助理接口。它们提供了可向企业管理员核实的正式接入方向，但尚无证据证明当前企业专享实例开通这些能力，或提供等价于直接模型推理的接口，不能将文档中的其他产品能力视为本实例已经授权。
+
 桌面端 `cargo build --locked -p workbuddy-proxy-desktop` 已通过；暂停时尚未启动桌面端验证界面及账号登录。
 
-2026-10-30 已启动桌面开发应用，开发模式网关监听 `127.0.0.1:3066`；未添加账号时健康接口显示降级。隔离实例中创建临时 Key 后，受保护管理接口对无 Key 和错误 Key 返回 HTTP 401，对有效 Key 返回 HTTP 200。Trae 网页登录已发起，尚待浏览器授权及真实调用验证；这不证明 Trae 模型可用。
+2026-10-30 已启动桌面开发应用，开发模式网关监听 `127.0.0.1:3066`；未添加账号时健康接口显示降级。隔离实例中创建临时 Key 后，受保护管理接口对无 Key 和错误 Key 返回 HTTP 401，对有效 Key 返回 HTTP 200；实例重启后，以环境变量配置的临时 Key 访问管理接口也返回 HTTP 200。
+
+Trae 网页登录后，重启实例并强制刷新目录，返回 18 个标记为 Trae 的模型。使用 `Doubao-Seed-2.1-Turbo-solo` 的真实普通对话返回 HTTP 200 和 `OK`，流式响应返回 HTTP 200 并包含结束帧；日志显示均由 Trae 直连处理，每次尝试一次。真实工具请求最初返回工具调用但结束标记为 `stop`；修复后非流式和流式请求均返回 HTTP 200、工具名 `get_time` 和结束标记 `tool_calls`，流式响应包含结束帧，日志确认均由 Trae 处理且各尝试一次。另以固定测试值 `09:00` 作为工具结果回传，模型返回相同时间，验证了两轮消息闭环；这不是实际时钟查询。完整网关测试为 586 项通过、6 项忽略、0 项失败；测试不替代真实调用。
+
+## 本机开发及客户端接入
+
+本次隔离数据目录为项目下 `.verify/desktop-data`，已由 `.gitignore` 排除；其中包含账号数据，不得复制进仓库或分享。开发模式默认地址为 `http://127.0.0.1:3066/v1`；发布版默认端口为 3065，实际地址以应用显示和监听结果为准。在应用的「网关 Key」页面创建供客户端使用的 Key，避免使用本次仅用于验证的临时 Key。DSH 可填写上述地址、自己的网关 Key 和已验证模型 `Doubao-Seed-2.1-Turbo-solo`。
+
+在仓库根目录的 PowerShell 中，可使用已隔离安装的工具链启动开发应用：
+
+```powershell
+$env:RUSTUP_HOME = Join-Path (Get-Location) '.verify\rustup'
+$env:CARGO_HOME = Join-Path (Get-Location) '.verify\cargo'
+$env:PATH = "$env:CARGO_HOME\bin;$env:PATH"
+$env:AGENT2API_PROXY_HOME = Join-Path (Get-Location) '.verify\desktop-data'
+npm run tauri:dev
+```
+
+在另一个 PowerShell 会话中，将自己创建的网关 Key 置于环境变量 `AGENT2API_KEY` 后，可用以下请求验证；不要把真实 Key 写进脚本或仓库：
+
+```powershell
+$headers = @{ Authorization = "Bearer $env:AGENT2API_KEY" }
+$body = @{ model = 'Doubao-Seed-2.1-Turbo-solo'; messages = @(@{ role = 'user'; content = '请回复 OK' }) } | ConvertTo-Json -Depth 5
+Invoke-RestMethod 'http://127.0.0.1:3066/v1/chat/completions' -Method Post -Headers $headers -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body))
+```
 
 ## 继续验证所需条件
 
