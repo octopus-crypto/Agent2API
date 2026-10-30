@@ -148,11 +148,12 @@ pub struct SoloStream {
     /// `token_usage` 读到后欠着，随下一帧一起发。
     pending_usage: Option<Value>,
     saw_done: bool,
+    saw_tool_calls: bool,
 }
 
 impl SoloStream {
     pub fn new(id: String, created: i64) -> Self {
-        Self { id, created, scanner: SseScanner::default(), pending_usage: None, saw_done: false }
+        Self { id, created, scanner: SseScanner::default(), pending_usage: None, saw_done: false, saw_tool_calls: false }
     }
 
     /// 喂一行，返回该行产生的帧。
@@ -174,6 +175,7 @@ impl SoloStream {
                     delta.insert("reasoning_content".to_string(), json!(reasoning));
                 }
                 if let Some(calls) = tool_calls {
+                    self.saw_tool_calls |= calls.as_array().is_some_and(|items| !items.is_empty());
                     delta.insert("tool_calls".to_string(), normalize_stream_tool_calls(calls));
                 }
                 if delta.is_empty() {
@@ -187,6 +189,7 @@ impl SoloStream {
             }
             SoloEvent::Done { finish_reason } => {
                 self.saw_done = true;
+                let finish_reason = normalize_finish_reason(finish_reason, self.saw_tool_calls);
                 vec![self.chunk(json!({}), Some(finish_reason)), Frame::Done]
             }
             SoloEvent::Error { code, message } => {
@@ -227,6 +230,14 @@ impl SoloStream {
             chunk.insert("usage".to_string(), usage);
         }
         Frame::Chunk(Value::Object(chunk))
+    }
+}
+
+fn normalize_finish_reason(reason: String, has_tool_calls: bool) -> String {
+    if has_tool_calls && (reason.is_empty() || reason == "stop") {
+        "tool_calls".to_string()
+    } else {
+        reason
     }
 }
 
@@ -328,6 +339,7 @@ pub fn aggregate(text: &str, id: &str, created: i64) -> Result<Value, StreamErro
         message.insert("reasoning_content".to_string(), json!(reasoning));
     }
     if !calls.is_empty() {
+        finish_reason = normalize_finish_reason(finish_reason, true);
         message.insert("tool_calls".to_string(), Value::Array(calls));
     }
     let mut response = serde_json::Map::new();
@@ -517,5 +529,17 @@ mod tests {
         assert_eq!("f", calls[1]["function"]["name"]);
         assert_eq!("{\"x\":1}", calls[1]["function"]["arguments"], "arguments 是拼接的");
         assert!(calls[1]["function"].get("namespace").is_none(), "SOLO 专属字段要剥掉");
+    }
+
+    #[test]
+    fn tool_calls_override_stop_in_stream_and_aggregate() {
+        let input = "event: output\ndata: {\"tool_calls\":[{\"id\":\"c1\",\"type\":\"function\",\"function_call\":{\"name\":\"get_time\",\"arguments\":\"{}\"}}]}\n\nevent: done\ndata: {\"finish_reason\":\"stop\"}\n\n";
+        let frames = run(input);
+        assert!(frames.iter().any(|frame| frame.contains("\"finish_reason\":\"tool_calls\"")));
+        let result = aggregate(input, "test", 0).unwrap();
+        assert_eq!("tool_calls", result["choices"][0]["finish_reason"]);
+        assert_eq!("get_time", result["choices"][0]["message"]["tool_calls"][0]["function"]["name"]);
+        assert_eq!("length", normalize_finish_reason("length".to_string(), true));
+        assert_eq!("stop", normalize_finish_reason("stop".to_string(), false));
     }
 }
