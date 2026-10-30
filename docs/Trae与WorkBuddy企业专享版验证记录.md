@@ -20,7 +20,7 @@
 
 腾讯公开的 [WorkBuddy Managed Agents API 文档](https://cloud.tencent.com/document/api/1831/138581) 描述了企业托管智能体的 REST API，要求签名和 CAM 鉴权；[WorkBuddy 开放平台文档](https://open.workbuddy.cn/docs/openapi) 描述了第三方应用的 OAuth 2.1、云端任务与本地助理接口。它们提供了可向企业管理员核实的正式接入方向，但尚无证据证明当前企业专享实例开通这些能力，或提供等价于直接模型推理的接口，不能将文档中的其他产品能力视为本实例已经授权。
 
-腾讯的 [CodeBuddy 安装和登录文档](https://cloud.tencent.com/document/product/1831/137000) 描述了企业域名登录，适用于专享版或私有化部署；[身份和访问管理文档](https://cloud.tencent.com/document/product/1831/137057) 描述专享环境及企业地址设置。已在 `.verify` 下隔离安装官方命令行工具 2.178.1，用于验证正式登录路径；这不证明它与当前企业专享实例兼容。该工具的一个依赖声明需要 Node.js 22 或更高，而本机当前使用 Node.js 20.20.2；版本命令可以运行，但完整兼容性尚未验证。企业客户端显示名为 WorkBuddy-donghua，检测到的产品版本为 5.3.11.0。
+腾讯的 [CodeBuddy 安装和登录文档](https://cloud.tencent.com/document/product/1831/137000) 描述了企业域名登录，适用于专享版或私有化部署；[身份和访问管理文档](https://cloud.tencent.com/document/product/1831/137057) 描述专享环境及企业地址设置。已在 `.verify` 下隔离安装官方命令行工具 2.178.1 和 Agent SDK 0.3.294，用于验证正式登录路径；这不证明它们与当前企业专享实例兼容。该工具的一个依赖声明需要 Node.js 22 或更高，已下载并校验 Node.js 22.23.4 便携版；首次登录窗口使用原有的 Node.js 20.20.2，尚待验证完整兼容性。企业客户端显示名为 WorkBuddy-donghua，检测到的产品版本为 5.3.11.0。
 
 桌面端 `cargo build --locked -p workbuddy-proxy-desktop` 已通过；暂停时尚未启动桌面端验证界面及账号登录。
 
